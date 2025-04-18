@@ -1,18 +1,10 @@
-use gtk::{Application, Window};
-use gtk::{Label, prelude::*};
-fn main() {
-    let app = Application::builder()
-        .application_id("org.example.HelloWorld")
-        .build();
-    app.connect_activate(|app| {
-        let label = Label::builder().label("FFf").build();
-        let window = Window::builder()
-            .application(app)
-            .title("Hello World")
-            .child(&label)
-            .build();
+use xcb::Xid;
+use xcb::x;
 
-        window.present();
-    });
-    app.run();
+fn setupwindow(window: x::Window) -> xcb::Result<()> {
+    let (conn, screen_num) = xcb::Connection::connect(None)?;
+    let setup = conn.get_setup();
+    let screen = setup.roots().nth(screen_num as usize).unwrap();
 }
+
+fn main() {}
