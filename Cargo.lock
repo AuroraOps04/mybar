@@ -13,6 +13,7 @@ name = "gtk-rs-demo"
 version = "0.1.0"
 dependencies = [
  "xcb",
+ "xcb-wm",
 ]
 
 [[package]]
@@ -26,6 +27,12 @@ name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
+
+[[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "quick-xml"
@@ -45,4 +52,15 @@ dependencies = [
  "bitflags",
  "libc",
  "quick-xml",
+]
+
+[[package]]
+name = "xcb-wm"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "151d80a83742235d439cfe429fa1cf9e0fb87c272d1efb1968d1996c5f28c76d"
+dependencies = [
+ "bitflags",
+ "paste",
+ "xcb",
 ]
