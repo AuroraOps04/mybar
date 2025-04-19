@@ -47,12 +47,26 @@ fn main() -> xcb::Result<()> {
     conn.send_request(&x::MapWindow { window: wid });
     conn.flush()?;
 
+    let gc = conn.generate_id();
+
+    let cookie = conn.send_request_checked(&x::CreateGc {
+        cid: gc,
+        drawable: x::Drawable::Window(window),
+        value_list: &[
+            x::Gc::Foreground(screen.black_pixel()),
+            x::Gc::Background(screen.white_pixel()),
+        ],
+    });
+    conn.check_request(cookie).expect("create gc error");
+
     loop {
         match conn.wait_for_event()? {
             xcb::Event::X(x::Event::Expose(ev)) => {
-                if (ev.count() != 0) {
+                if ev.count() != 0 {
                     continue;
                 }
+                draw_date(&conn, window, gc)?;
+                conn.flush()?;
             }
             _ => {
                 println!("other event");
@@ -61,4 +75,19 @@ fn main() -> xcb::Result<()> {
     }
 
     // Ok(())
+}
+
+fn draw_date(conn: &xcb::Connection, window: x::Window, gc: x::Gcontext) -> xcb::Result<()> {
+    let now = chrono::Local::now();
+    let text = now.format("%Y/%m/%d %H:%M");
+    let cookie = conn.send_request_checked(&x::ImageText8 {
+        drawable: x::Drawable::Window(window),
+        gc,
+        x: 20,
+        y: 15,
+        string: text.to_string().as_bytes(),
+    });
+    conn.check_request(cookie).expect("draw text error");
+    conn.flush()?;
+    Ok(())
 }
