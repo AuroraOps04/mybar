@@ -4,30 +4,6 @@ use std::time::Duration;
 use xcb::{Xid, x};
 use xcb_wm::ewmh;
 
-fn t1(conn: &xcb::Connection, window: xcb::x::Window, vis: &mut xcb::x::Visualtype) {
-    unsafe {
-        let conn = cairo::XCBConnection::from_raw_none(
-            conn.get_raw_conn() as *mut cairo_sys::xcb_connection_t
-        );
-        let surface = cairo::XCBSurface::create(
-            &conn,
-            &cairo::XCBDrawable(window.resource_id()),
-            &cairo::XCBVisualType::from_raw_none(
-                vis as *mut xcb::x::Visualtype as *mut cairo_sys::xcb_visualtype_t,
-            ),
-            30,
-            30,
-        )
-        .expect("surface error");
-
-        let c = cairo::Context::new(surface).unwrap();
-        c.set_line_width(4.0);
-        c.set_source_rgb(255.0, 0.0, 0.0);
-        c.rectangle(0.0, 0.0, 10.0, 10.0);
-        c.stroke().unwrap();
-    }
-}
-
 fn create_surface(
     conn: &xcb::Connection,
     window: xcb::x::Window,
