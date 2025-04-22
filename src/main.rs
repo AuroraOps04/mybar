@@ -1,8 +1,94 @@
+use cairo_sys::{cairo_create, cairo_xcb_surface_create};
+use std::fs::create_dir_all;
+use std::os::unix::net::UnixStream;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
-use xcb::x;
+use std::{env, thread};
+use x11::xinput2::XI_HierarchyChanged;
+use xcb::x::{Visualtype, Window};
+use xcb::{Xid, parse_display, x};
 use xcb_wm::ewmh;
+
+fn t1(conn: &xcb::Connection, window: xcb::x::Window, vis: &mut xcb::x::Visualtype) {
+    unsafe {
+        let conn = cairo::XCBConnection::from_raw_none(
+            conn.get_raw_conn() as *mut cairo_sys::xcb_connection_t
+        );
+        let surface = cairo::XCBSurface::create(
+            &conn,
+            &cairo::XCBDrawable(window.resource_id()),
+            &cairo::XCBVisualType::from_raw_none(
+                vis as *mut xcb::x::Visualtype as *mut cairo_sys::xcb_visualtype_t,
+            ),
+            30,
+            30,
+        )
+        .expect("surface error");
+
+        let c = cairo::Context::new(surface).unwrap();
+        c.set_line_width(4.0);
+        c.set_source_rgb(255.0, 0.0, 0.0);
+        c.rectangle(0.0, 0.0, 10.0, 10.0);
+        c.stroke().unwrap();
+    }
+}
+
+fn create_surface(
+    conn: &xcb::Connection,
+    window: xcb::x::Window,
+    visual_type: xcb::x::Visualtype,
+    width: i32,
+    height: i32,
+) -> Result<cairo::XCBSurface, cairo::Error> {
+    unsafe {
+        let conn = cairo::XCBConnection::from_raw_none(
+            conn.get_raw_conn() as *mut cairo_sys::xcb_connection_t
+        );
+        let mut visual_type = visual_type;
+        let surface = cairo::XCBSurface::create(
+            &conn,
+            &cairo::XCBDrawable(window.resource_id()),
+            &cairo::XCBVisualType::from_raw_none(
+                (&mut visual_type) as *mut xcb::x::Visualtype as *mut cairo_sys::xcb_visualtype_t,
+            ),
+            width,
+            height,
+        )?;
+        Ok(surface)
+    }
+}
+
+pub struct Painter {
+    width: i32,
+    height: i32,
+    cairo_conn: cairo::Context,
+}
+
+impl Painter {
+    fn new(
+        conn: &xcb::Connection,
+        window: xcb::x::Window,
+        visual_type: xcb::x::Visualtype,
+        width: i32,
+        height: i32,
+    ) -> Self {
+        let surface = create_surface(conn, window, visual_type, width, height)
+            .expect("failed to create surface");
+        let cairo_conn = cairo::Context::new(surface).expect("faield create cairo context");
+        Painter {
+            width,
+            height,
+            cairo_conn,
+        }
+    }
+
+    fn draw_rectangle(&self, x: f64, y: f64, size: f64) -> Result<(), cairo::Error> {
+        self.cairo_conn.set_source_rgb(255.0, 0.0, 0.0);
+        self.cairo_conn.rectangle(x, y, size, self.height as f64);
+        self.cairo_conn.fill()?;
+        Ok(())
+    }
+}
 
 fn main() -> xcb::Result<()> {
     let (conn, screen_num) = xcb::Connection::connect(None)?;
@@ -35,15 +121,16 @@ fn main() -> xcb::Result<()> {
         visual: visual.visual_id(),
     });
     conn.check_request(cookie).expect("failed create colormap");
-
+    let width = screen.width_in_pixels();
+    let height = 30;
     let cookie = conn.send_request_checked(&x::CreateWindow {
         depth: 32,
         wid,
         parent: screen.root(),
         x: 0,
         y: (screen.height_in_pixels() - 30) as i16,
-        width: screen.width_in_pixels(),
-        height: 30,
+        width,
+        height,
         border_width: 0,
         class: x::WindowClass::CopyFromParent,
         visual: visual.visual_id(),
@@ -104,6 +191,10 @@ fn main() -> xcb::Result<()> {
             }
         }
     });
+    let title = get_current_wm_title(&ewmh_con)?;
+    println!("window title {title:?}");
+    let p = Painter::new(&conn, window, *visual, width as i32, height as i32);
+    p.draw_rectangle(20.0, 10.0, 200.0).expect("faield draw");
 
     loop {
         match conn.wait_for_event()? {
@@ -124,9 +215,40 @@ fn main() -> xcb::Result<()> {
     // Ok(())
 }
 
+fn get_current_window(conn: &ewmh::Connection) -> Result<xcb::x::Window, xcb::Error> {
+    let reply = conn.wait_for_reply(conn.send_request(&ewmh::proto::GetActiveWindow))?;
+    Ok(reply.window)
+}
+
+fn get_current_wm_title(conn: &ewmh::Connection) -> Result<String, xcb::Error> {
+    let window = get_current_window(conn)?;
+    let reply = conn.wait_for_reply(conn.send_request(&ewmh::proto::GetWmName(window)))?;
+    Ok(reply.name)
+}
+
+#[test]
+fn test() {
+    let socket = match env::var("BSPWM_SOCKET") {
+        Ok(socket) => socket,
+        Err(_) => {
+            if let Some(dis_info) = xcb::parse_display("") {
+                let host = dis_info.host;
+                let dis = dis_info.display;
+                let sc = dis_info.screen;
+                format!("/tmp/bspwm{host}_{dis}_{sc}-socket")
+            } else {
+                panic!("cannot parse display")
+            }
+        }
+    };
+    let stream = UnixStream::connect(socket).expect("cannot connect to socket");
+}
+
 fn draw_date(conn: &xcb::Connection, window: x::Window, gc: x::Gcontext) -> xcb::Result<()> {
     let now = chrono::Local::now();
     let text = now.format("%Y/%m/%d %H:%M");
+    // let font = conn.generate_id();
+    // conn.send_request_checked(&x::QueryFont { font });
     let cookie = conn.send_request_checked(&x::ImageText8 {
         drawable: x::Drawable::Window(window),
         gc,
