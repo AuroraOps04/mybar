@@ -1,12 +1,7 @@
-use cairo_sys::{cairo_create, cairo_xcb_surface_create};
-use std::fs::create_dir_all;
-use std::os::unix::net::UnixStream;
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
-use std::{env, thread};
-use x11::xinput2::XI_HierarchyChanged;
-use xcb::x::{Visualtype, Window};
-use xcb::{Xid, parse_display, x};
+use xcb::{Xid, x};
 use xcb_wm::ewmh;
 
 fn t1(conn: &xcb::Connection, window: xcb::x::Window, vis: &mut xcb::x::Visualtype) {
@@ -226,22 +221,17 @@ fn get_current_wm_title(conn: &ewmh::Connection) -> Result<String, xcb::Error> {
     Ok(reply.name)
 }
 
-#[test]
-fn test() {
-    let socket = match env::var("BSPWM_SOCKET") {
-        Ok(socket) => socket,
-        Err(_) => {
-            if let Some(dis_info) = xcb::parse_display("") {
-                let host = dis_info.host;
-                let dis = dis_info.display;
-                let sc = dis_info.screen;
-                format!("/tmp/bspwm{host}_{dis}_{sc}-socket")
-            } else {
-                panic!("cannot parse display")
-            }
-        }
-    };
-    let stream = UnixStream::connect(socket).expect("cannot connect to socket");
+fn get_bspwm_socket() -> Option<String> {
+    let socket = std::env::var("BSPWM_SOCKET");
+    if let Ok(socket) = socket {
+        return Some(socket);
+    }
+    xcb::parse_display("").map(|dis_info| {
+        let host = dis_info.host;
+        let dis = dis_info.display;
+        let sc = dis_info.screen;
+        format!("/tmp/bspwm{host}_{dis}_{sc}-socket")
+    })
 }
 
 fn draw_date(conn: &xcb::Connection, window: x::Window, gc: x::Gcontext) -> xcb::Result<()> {
