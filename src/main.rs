@@ -3,6 +3,8 @@ use std::thread;
 use std::time::Duration;
 use xcb::{Xid, x};
 use xcb_wm::ewmh;
+mod alsa;
+mod util;
 
 fn create_surface(
     conn: &xcb::Connection,
@@ -32,7 +34,7 @@ fn create_surface(
 pub struct Painter {
     width: i32,
     height: i32,
-    cairo_conn: cairo::Context,
+    pub cairo_conn: cairo::Context,
 }
 
 impl Painter {
@@ -46,6 +48,12 @@ impl Painter {
         let surface = create_surface(conn, window, visual_type, width, height)
             .expect("failed to create surface");
         let cairo_conn = cairo::Context::new(surface).expect("faield create cairo context");
+        cairo_conn.select_font_face(
+            "Maple Mono NL NF CN",
+            cairo::FontSlant::Normal,
+            cairo::FontWeight::Normal,
+        );
+        cairo_conn.set_font_size(14.0);
         Painter {
             width,
             height,
@@ -53,10 +61,81 @@ impl Painter {
         }
     }
 
-    fn draw_rectangle(&self, x: f64, y: f64, size: f64) -> Result<(), cairo::Error> {
-        self.cairo_conn.set_source_rgb(255.0, 0.0, 0.0);
-        self.cairo_conn.rectangle(x, y, size, self.height as f64);
+    fn text_width(&self, text: &str) -> Result<f64, cairo::Error> {
+        self.cairo_conn.text_extents(text).map(|te| te.width())
+    }
+    fn set_hex_color(&self, color: &str) -> Result<(), cairo::Error> {
+        let (a, r, g, b) = util::hex_to_argb(color).map_err(|_| cairo::Error::DwriteError)?;
+        self.cairo_conn.set_source_rgba(r, g, b, a);
+        Ok(())
+    }
+
+    fn draw_rectangle(&self, x: f64, width: f64, color: &str) -> Result<(), cairo::Error> {
+        let height: f64 = self.height as f64 - 10.0;
+        let y = (self.height as f64 - height) / 2.0;
+        self.set_hex_color(color)?;
+        self.cairo_conn.rectangle(x, y, width, height);
         self.cairo_conn.fill()?;
+        Ok(())
+    }
+
+    fn draw_text(&self, x: f64, y: f64, text: &str, color: &str) -> Result<(), cairo::Error> {
+        self.set_hex_color(color)?;
+        let fe = self.cairo_conn.font_extents()?;
+        let y = self.height as f64 / 2.0 + (fe.ascent() - fe.descent()) / 2.0;
+        self.cairo_conn.move_to(x, y);
+        self.cairo_conn.show_text(text)?;
+        Ok(())
+    }
+
+    fn draw_rounded_background(
+        &self,
+        x: f64,
+        width: f64,
+        radius: f64,
+        color: &str,
+    ) -> Result<(), cairo::Error> {
+        let height: f64 = self.height as f64 - 10.0;
+        let y = (self.height as f64 - height) / 2.0;
+        self.set_hex_color(color)?;
+        self.cairo_conn.move_to(x + radius, y);
+        self.cairo_conn.line_to(x + width - radius, y);
+        // 270 -> 360
+        self.cairo_conn.arc(
+            x + width - radius,
+            y + radius,
+            radius,
+            -90.0_f64.to_radians(),
+            0.0_f64.to_radians(),
+        );
+        self.cairo_conn.line_to(x + width, y + height - radius);
+        self.cairo_conn.arc(
+            x + width - radius,
+            y + height - radius,
+            radius,
+            0.0_f64,
+            90.0_f64.to_radians(),
+        );
+        self.cairo_conn.line_to(x + radius, y + height);
+        self.cairo_conn.arc(
+            x + radius,
+            y + height - radius,
+            radius,
+            90.0_f64.to_radians(),
+            180_f64.to_radians(),
+        );
+
+        self.cairo_conn.line_to(x, y + radius);
+        self.cairo_conn.arc(
+            x + radius,
+            y + radius,
+            radius,
+            180_f64.to_radians(),
+            270_f64.to_radians(),
+        );
+        self.cairo_conn.close_path();
+        self.cairo_conn.fill()?;
+
         Ok(())
     }
 }
@@ -93,13 +172,13 @@ fn main() -> xcb::Result<()> {
     });
     conn.check_request(cookie).expect("failed create colormap");
     let width = screen.width_in_pixels();
-    let height = 30;
+    let height = 40;
     let cookie = conn.send_request_checked(&x::CreateWindow {
         depth: 32,
         wid,
         parent: screen.root(),
         x: 0,
-        y: (screen.height_in_pixels() - 30) as i16,
+        y: (screen.height_in_pixels() - 40) as i16,
         width,
         height,
         border_width: 0,
@@ -121,11 +200,10 @@ fn main() -> xcb::Result<()> {
     let req =
         ewmh::proto::SetWmWindowType::new(window, vec![ewmh_con.atoms._NET_WM_WINDOW_TYPE_DOCK]);
     ewmh_con.send_request_checked(&req);
-
     ewmh_con.send_request_checked(&ewmh::proto::SetWmName::new(window, "mybar"));
 
     let mut arr: [u32; 12] = [0; 12];
-    arr[3] = 30;
+    arr[3] = 40;
     let cookie = conn.send_request_checked(&x::ChangeProperty {
         mode: x::PropMode::Replace,
         window,
@@ -143,7 +221,7 @@ fn main() -> xcb::Result<()> {
         cid: gc,
         drawable: x::Drawable::Window(window),
         value_list: &[
-            x::Gc::Foreground(0x80FF9900),
+            x::Gc::Foreground(0xFFFF9900),
             x::Gc::Background(0x00000000),
             x::Gc::GraphicsExposures(false),
         ],
@@ -151,22 +229,21 @@ fn main() -> xcb::Result<()> {
     conn.check_request(cookie).expect("create gc error");
 
     // 创建一个新的线程来定期更新时间
-    let conn_clone = Arc::clone(&conn);
-    let window_clone = window;
-    let gc_clone = gc;
-    thread::spawn(move || {
-        loop {
-            thread::sleep(Duration::from_secs(1));
-            if let Err(e) = draw_date(&conn_clone, window_clone, gc_clone) {
-                eprintln!("Error updating time: {}", e);
-            }
-        }
-    });
-    let title = get_current_wm_title(&ewmh_con)?;
-    println!("window title {title:?}");
     let p = Painter::new(&conn, window, *visual, width as i32, height as i32);
-    p.draw_rectangle(20.0, 10.0, 200.0).expect("faield draw");
+    // let p = Arc::new(p);
 
+    p.set_hex_color("#475164").unwrap();
+
+    // let p_clone = Arc::clone(&p);
+    // thread::spawn(move || {
+    //     loop {
+    //         thread::sleep(Duration::from_secs(1));
+    //         if let Err(e) = draw_date(&p_clone) {
+    //             eprintln!("Error updating time: {}", e);
+    //         }
+    //     }
+    // });
+    draw_title(&p, &ewmh_con);
     loop {
         match conn.wait_for_event()? {
             xcb::Event::X(x::Event::Expose(ev)) => {
@@ -174,7 +251,7 @@ fn main() -> xcb::Result<()> {
                     continue;
                 }
                 println!("expose event");
-                draw_date(&conn, window, gc)?;
+                draw_date(&p).unwrap();
                 conn.flush()?;
             }
             _ => {
@@ -210,19 +287,24 @@ fn get_bspwm_socket() -> Option<String> {
     })
 }
 
-fn draw_date(conn: &xcb::Connection, window: x::Window, gc: x::Gcontext) -> xcb::Result<()> {
+fn draw_date(p: &Painter) -> Result<(), cairo::Error> {
     let now = chrono::Local::now();
-    let text = now.format("%Y/%m/%d %H:%M");
-    // let font = conn.generate_id();
-    // conn.send_request_checked(&x::QueryFont { font });
-    let cookie = conn.send_request_checked(&x::ImageText8 {
-        drawable: x::Drawable::Window(window),
-        gc,
-        x: 20,
-        y: 15,
-        string: text.to_string().as_bytes(),
-    });
-    conn.check_request(cookie).expect("draw text error");
-    conn.flush()?;
+    let text = now.format("%Y/%m/%d %H:%M").to_string();
+    let tw = p.text_width(&text)?;
+    let gap = 30.0;
+    let w = tw + gap * 2.0;
+    p.draw_rounded_background(100.0, w, 10.0, "#475164")?;
+
+    p.draw_text(100.0 + gap, 10.0, &text, "#ff3329")?;
     Ok(())
+}
+
+fn draw_title(p: &Painter, conn: &ewmh::Connection) {
+    let title = get_current_wm_title(conn).unwrap();
+    let tw = p.text_width(&title).unwrap();
+    let gap = 30.0;
+    let w = tw + 2.0 * gap;
+    p.draw_rounded_background(900.0, w, 10.0, "#475164")
+        .unwrap();
+    p.draw_text(900.0 + gap, 20.0, &title, "#3cffdd").unwrap();
 }
