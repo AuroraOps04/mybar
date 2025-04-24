@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use std::{panic::UnwindSafe, sync::Arc};
 use xcb::{Xid, x};
 use xcb_wm::ewmh;
 mod alsa;
@@ -34,6 +34,7 @@ fn create_surface(
 pub struct Painter {
     width: i32,
     height: i32,
+    audio: alsa::Audio,
     pub cairo_conn: cairo::Context,
 }
 
@@ -54,11 +55,31 @@ impl Painter {
             cairo::FontWeight::Normal,
         );
         cairo_conn.set_font_size(14.0);
+        let audio = alsa::Audio::default();
         Painter {
             width,
             height,
+            audio,
             cairo_conn,
         }
+    }
+    fn draw_volumn(&self) {
+        let v = self.audio.get_current_volume();
+        let unmuted = self.audio.unmuted;
+        let x = 1700.;
+        let rw = 100.;
+        let gap = 10.;
+        let te = self.cairo_conn.text_extents("").unwrap();
+        let iw = te.width() + rw + 5.0;
+        self.draw_rounded_background(x, iw + gap * 2., 10.0, "#475164")
+            .unwrap();
+        self.draw_text(x + gap, gap, "", "#ff3399").unwrap();
+        let rw = rw * v;
+        self.set_hex_color("#ff3399").unwrap();
+        self.cairo_conn.move_to(x + gap + te.width() + 5.0, 20.);
+        self.cairo_conn
+            .line_to(x + gap + te.width() + 5.0 + rw, 20.);
+        self.cairo_conn.stroke().unwrap();
     }
 
     fn text_width(&self, text: &str) -> Result<f64, cairo::Error> {
@@ -244,6 +265,7 @@ fn main() -> xcb::Result<()> {
     //     }
     // });
     draw_title(&p, &ewmh_con);
+    p.draw_volumn();
     loop {
         match conn.wait_for_event()? {
             xcb::Event::X(x::Event::Expose(ev)) => {
