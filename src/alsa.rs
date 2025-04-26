@@ -2,7 +2,6 @@ pub struct Audio {
     pub min: i64,
     pub max: i64,
     pub has_switch: bool,
-    pub unmuted: bool,
     mixer: alsa::mixer::Mixer,
     sid: alsa::mixer::SelemId,
 }
@@ -15,16 +14,15 @@ impl Audio {
 
         let (min, max) = selem.get_playback_volume_range();
         let has_switch = selem.has_playback_switch();
-        let unmuted = match selem.get_playback_switch(alsa::mixer::SelemChannelId::FrontLeft) {
-            Ok(1) => true,
-            _ => false,
-        };
+        // let unmuted = match selem.get_playback_switch(alsa::mixer::SelemChannelId::FrontLeft) {
+        //     Ok(1) => true,
+        //     _ => false,
+        // };
 
         Audio {
             min,
             max,
             has_switch,
-            unmuted,
             mixer,
             sid,
         }
@@ -53,15 +51,14 @@ impl Audio {
         let selem = self.get_selem();
         selem.set_playback_volume_all(v).unwrap();
     }
-    pub fn toggle_mute(&mut self) {
+    pub fn toggle_mute(&self) {
         let selem = self.get_selem();
         selem
-            .set_playback_switch_all(match self.unmuted {
+            .set_playback_switch_all(match self.is_unmuted() {
                 true => 0,
                 false => 1,
             })
             .unwrap();
-        self.unmuted = self.is_unmuted();
     }
 }
 
@@ -82,9 +79,9 @@ mod test {
         let mut audio = Audio::new();
         println!("{}", audio.get_current_volume());
         audio.set_current_volumn(0.24);
-        let u = audio.unmuted;
+        let u = audio.is_unmuted();
         println!("{u}");
         audio.toggle_mute();
-        assert_eq!(audio.unmuted, !u);
+        assert_eq!(audio.is_unmuted(), !u);
     }
 }
