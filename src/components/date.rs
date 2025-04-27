@@ -1,7 +1,6 @@
-use chrono;
-use super::{Component, Painter, Event};
-use cairo;
+use super::{Component, Event, Painter};
 use crate::error::MyBarError;
+use chrono;
 
 pub struct Date<'a> {
     x: i16,
@@ -21,24 +20,33 @@ impl<'a> Date<'a> {
             painter,
         }
     }
+
+    pub fn flush(&self) -> Result<(), MyBarError> {
+        self.painter.flush()?;
+        Ok(())
+    }
 }
 
-impl<'a> Component for Date<'a> {
+impl Component for Date<'_> {
     fn draw(&self) -> Result<(), MyBarError> {
         let now = chrono::Local::now();
-        let text = now.format("%Y/%m/%d %H:%M").to_string();
+        let text = now.format("%a %b %e %T %Y").to_string();
         let tw = self.painter.text_width(&text)?;
         let w = tw + 30.0 * 2.0;
-        
-        self.painter.draw_rounded_background(self.x as f64, w, 10.0, "#475164")?;
-        self.painter.draw_text(self.x as f64 + 30.0, 10.0, &text, "#ff3329")?;
-        
+
+        self.painter
+            .draw_rounded_background(self.x as f64, w, 10.0, "#475164")?;
+        self.painter
+            .draw_text(self.x as f64 + 30.0, 10.0, &text, "#ff3329")?;
+
         Ok(())
     }
 
     fn contains_point(&self, x: i16, y: i16) -> bool {
-        x >= self.x && x <= self.x + self.width as i16 &&
-        y >= self.y && y <= self.y + self.height as i16
+        x >= self.x
+            && x <= self.x + self.width as i16
+            && y >= self.y
+            && y <= self.y + self.height as i16
     }
 
     fn handle_event(&self, event: &Event) -> Result<(), MyBarError> {
@@ -59,4 +67,4 @@ impl<'a> Component for Date<'a> {
     fn get_bounds(&self) -> (i16, i16, u16, u16) {
         (self.x, self.y, self.width, self.height)
     }
-} 
+}

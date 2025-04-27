@@ -2,7 +2,6 @@ use cairo;
 use xcb::{x, Xid};
 use crate::error::MyBarError;
 
-use crate::alsa::Audio;
 use crate::util;
 
 pub struct Painter<'a> {

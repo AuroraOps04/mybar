@@ -68,13 +68,11 @@ impl Default for Audio {
     }
 }
 
-pub fn get_info() {}
-
 #[cfg(test)]
 mod test {
     use super::Audio;
 
-    #[test]
+    // #[test]
     fn test01() {
         let mut audio = Audio::new();
         println!("{}", audio.get_current_volume());

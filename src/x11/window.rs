@@ -1,8 +1,8 @@
-use xcb::{x, Xid};
+use xcb::x;
 
 pub fn create_window(conn: &xcb::Connection, screen: &x::Screen) -> (x::Window, x::Visualtype) {
     let wid = conn.generate_id();
-    
+
     // 查找支持 32 位深度的视觉（用于透明度）
     let mut visual = None;
     for depth in screen.allowed_depths() {
@@ -28,7 +28,7 @@ pub fn create_window(conn: &xcb::Connection, screen: &x::Screen) -> (x::Window, 
         visual: visual.visual_id(),
     });
     conn.check_request(cookie).expect("failed create colormap");
-    
+
     let width = screen.width_in_pixels();
     let height = 40;
     let cookie = conn.send_request_checked(&x::CreateWindow {
@@ -46,14 +46,20 @@ pub fn create_window(conn: &xcb::Connection, screen: &x::Screen) -> (x::Window, 
             x::Cw::BackPixel(0x0),
             x::Cw::BorderPixel(0x0),
             x::Cw::EventMask(
-                x::EventMask::EXPOSURE |
-                x::EventMask::BUTTON_PRESS |
-                x::EventMask::KEY_PRESS
+                x::EventMask::EXPOSURE | x::EventMask::BUTTON_PRESS | x::EventMask::KEY_PRESS,
             ),
             x::Cw::Colormap(colormap),
         ],
     });
     conn.check_request(cookie).expect("failed create window");
+    // set stack mode
+    let cookie = conn.send_request_checked(&xcb::x::ConfigureWindow {
+        window: wid,
+        value_list: &[xcb::x::ConfigWindow::StackMode(xcb::x::StackMode::Below)],
+    });
+    conn.check_request(cookie)
+        .expect("failed set window stack mode");
 
     (wid, *visual)
-} 
+}
+

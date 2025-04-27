@@ -1,13 +1,14 @@
 use std::sync::Arc;
-use xcb::{x};
+use xcb::x;
 
-mod error;
 mod alsa;
-mod util;
+mod bspwm;
 mod components;
+mod error;
+mod util;
 mod x11;
 
-use components::{Painter, Volume, Date, Title, Component, Event};
+use components::{Component, Date, Event, Painter, Title, Volume};
 use x11::{create_window, setup_ewmh};
 
 fn main() -> xcb::Result<()> {
@@ -15,10 +16,10 @@ fn main() -> xcb::Result<()> {
     let conn = Arc::new(conn);
     let setup = conn.get_setup();
     let screen = setup.roots().nth(screen_num as usize).unwrap();
-    
+
     let (window, visual_type) = create_window(&conn, screen);
     let ewmh_conn = setup_ewmh(&conn, window);
-    
+
     conn.send_request(&x::MapWindow { window });
     conn.flush()?;
 
@@ -36,18 +37,15 @@ fn main() -> xcb::Result<()> {
 
     let width = screen.width_in_pixels();
     let height = 40;
-    let painter = Painter::new(&conn, window, visual_type, width as i32, height as i32).unwrap();
-    let  audio = alsa::Audio::default();
-    let volume = Volume::new(&painter, & audio);
+    let painter = Painter::new(&conn, window, visual_type, width as i32, height).unwrap();
+    let audio = alsa::Audio::default();
+    let volume = Volume::new(&painter, &audio);
     let date = Date::new(&painter);
     let title = Title::new(&painter, &ewmh_conn);
-    
-    let components: Vec<Box<dyn Component>> = vec![
-        Box::new(volume),
-        Box::new(date),
-        Box::new(title),
-    ];
-    
+
+    let components: Vec<Box<dyn Component>> =
+        vec![Box::new(volume), Box::new(date), Box::new(title)];
+
     loop {
         match conn.wait_for_event()? {
             xcb::Event::X(x::Event::Expose(ev)) => {
@@ -68,7 +66,8 @@ fn main() -> xcb::Result<()> {
                 let button = ev.detail();
                 for component in &components {
                     if component.contains_point(x, y) {
-                        if let Err(e) = component.handle_event(&Event::MouseClick { x, y, button }) {
+                        if let Err(e) = component.handle_event(&Event::MouseClick { x, y, button })
+                        {
                             eprintln!("Error handling click event: {}", e);
                         }
                         break;
@@ -76,7 +75,9 @@ fn main() -> xcb::Result<()> {
                 }
             }
             xcb::Event::X(x::Event::KeyPress(ev)) => {
-                let event = Event::KeyPress { keycode: ev.detail() };
+                let event = Event::KeyPress {
+                    keycode: ev.detail(),
+                };
                 for component in &components {
                     if let Err(e) = component.handle_event(&event) {
                         eprintln!("Error handling key event: {}", e);
