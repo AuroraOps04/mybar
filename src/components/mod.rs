@@ -2,6 +2,8 @@ pub mod painter;
 pub mod title;
 pub mod date;
 pub mod volume;
+pub mod bspwm;
+pub mod light;
 
 use crate::error::MyBarError;
 
@@ -20,4 +22,6 @@ pub enum Event {
 pub use painter::Painter;
 pub use volume::Volume;
 pub use date::Date;
-pub use title::Title; 
+pub use title::Title;
+pub use bspwm::BspwmComponent;
+pub use light::Light; 

@@ -5,10 +5,11 @@ mod alsa;
 mod bspwm;
 mod components;
 mod error;
+mod light;
 mod util;
 mod x11;
 
-use components::{Component, Date, Event, Painter, Title, Volume};
+use components::{BspwmComponent, Component, Date, Event, Light, Painter, Title, Volume};
 use x11::{create_window, setup_ewmh};
 
 fn main() -> xcb::Result<()> {
@@ -40,11 +41,19 @@ fn main() -> xcb::Result<()> {
     let painter = Painter::new(&conn, window, visual_type, width as i32, height).unwrap();
     let audio = alsa::Audio::default();
     let volume = Volume::new(&painter, &audio);
+    let light = Light::new(&painter);
     let date = Date::new(&painter);
     let title = Title::new(&painter, &ewmh_conn);
+    let bspwm: Arc<std::sync::Mutex<bspwm::Bspwm>> = bspwm::Bspwm::new();
+    let bspwm_component = BspwmComponent::new(&painter, bspwm);
 
-    let components: Vec<Box<dyn Component>> =
-        vec![Box::new(volume), Box::new(date), Box::new(title)];
+    let components: Vec<Box<dyn Component>> = vec![
+        Box::new(bspwm_component),
+        Box::new(light),
+        Box::new(volume),
+        Box::new(date),
+        Box::new(title),
+    ];
 
     loop {
         match conn.wait_for_event()? {

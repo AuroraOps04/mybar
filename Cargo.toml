@@ -8,7 +8,8 @@ chrono = "0.4.40"
 timer = "0.2.0"
 x11 = "2.21.0"
 alsa = "0.7.0"
-
+ddc = "0.3.0"
+ddc-hi = "0.4.1"
 
 [dependencies.xcb]
 version = "1.5.0"

@@ -1,6 +1,139 @@
-use std::env;
+use std::{
+    env,
+    io::{BufRead, BufReader, Write},
+    os::unix::net::UnixStream,
+    sync::{Arc, Mutex},
+};
 
-pub struct Desktop {}
+#[derive(Debug, Clone)]
+pub enum DesktopEnum {
+    FREE,
+    FOCUSED,
+    OCCUPIED,
+    URGENT,
+}
+
+impl DesktopEnum {
+    fn from_char(c: char) -> Option<Self> {
+        match c {
+            'o' | 'O' => Some(DesktopEnum::OCCUPIED),
+            'f' | 'F' => Some(DesktopEnum::FOCUSED),
+            'u' | 'U' => Some(DesktopEnum::URGENT),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Desktop {
+    pub state: DesktopEnum,
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct Monitor {
+    pub name: String,
+    pub is_active: bool,
+    pub desktops: Vec<Desktop>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Bspwm {
+    pub monitors: Vec<Monitor>,
+    
+}
+
+impl Bspwm {
+    pub fn new() -> Arc<Mutex<Bspwm>> {
+        let bspwm = Arc::new(Mutex::new(Bspwm { monitors: vec![] }));
+        let b = Arc::clone(&bspwm);
+        std::thread::spawn(move || {
+            let sock = get_bspwm_socket();
+            let mut sock = UnixStream::connect(sock).unwrap();
+            sock.write_all(b"subscribe\0report\0").unwrap();
+            let mut reader = BufReader::new(sock);
+            let mut line = String::new();
+            loop {
+                if let Err(e) = reader.read_line(&mut line) {
+                    eprintln!("read bspwm err: {e}");
+                    break;
+                }
+                if let Ok(mut bspwm) = b.lock() {
+                    println!("parse bspwm report: {line}");
+                    bspwm.parse_report(&line);
+                }
+                line.clear();
+            }
+        });
+
+        bspwm
+    }
+
+    fn parse_report(&mut self, report: &str) {
+        let mut cur_monitor: Option<&mut Monitor> = None;
+        let mut i = 0;
+        let chars: Vec<char> = report.chars().collect();
+        let len = chars.len();
+
+        while i < len {
+            match chars[i] {
+                'M' | 'm' => {
+                    let is_active = chars[i] == 'M';
+                    i += 1;
+                    let start = i;
+                    while i < len && chars[i] != ':' {
+                        i += 1;
+                    }
+                    let name: String = chars[start..i].iter().collect();
+                    
+                    // 查找或创建显示器
+                    cur_monitor = self.monitors.iter_mut().find(|m| m.name == name);
+                    if cur_monitor.is_none() {
+                        self.monitors.push(Monitor {
+                            name: name.clone(),
+                            is_active,
+                            desktops: vec![],
+                        });
+                        cur_monitor = self.monitors.last_mut();
+                    } else {
+                        if let Some(mon) = cur_monitor.as_mut() {
+                            mon.is_active = is_active;
+                        }
+                    }
+                }
+                'o' | 'O' | 'f' | 'F' | 'u' | 'U' => {
+                    if let Some(monitor) = cur_monitor.as_mut() {
+                        let state = DesktopEnum::from_char(chars[i]).unwrap();
+                        i += 1;
+                        let start = i;
+                        while i < len && chars[i] != ':' {
+                            i += 1;
+                        }
+                        let name: String = chars[start..i].iter().collect();
+                        
+                        // 查找或创建桌面
+                        if let Some(desktop) = monitor.desktops.iter_mut().find(|d| d.name == name) {
+                            desktop.state = state;
+                        } else {
+                            monitor.desktops.push(Desktop {
+                                state,
+                                name,
+                            });
+                        }
+                    }
+                }
+                'L' | 'T' | 'G' => {
+                    // 跳过这些标记
+                    i += 1;
+                    while i < len && chars[i] != ':' && chars[i] != '\n' {
+                        i += 1;
+                    }
+                }
+                _ => i += 1,
+            }
+        }
+    }
+}
 
 fn get_bspwm_socket() -> String {
     match env::var("BSPWM_SOCKET") {
@@ -14,7 +147,7 @@ fn get_bspwm_socket() -> String {
 #[cfg(test)]
 mod test {
     use std::{
-        io::{Read, Write},
+        io::{BufRead, BufReader, Write},
         os::unix::net::UnixStream,
     };
 
@@ -23,18 +156,15 @@ mod test {
     #[test]
     fn t1() {
         let sock = get_bspwm_socket();
-        let b = b"subscribe\0report";
 
-        assert_eq!(0, "".as_bytes().len());
-        assert_eq!(sock, "/tmp/bspwm_0_0-socket".to_string());
-        println!("sock: {sock}");
         let mut sock = UnixStream::connect(sock).expect("conn");
-        println!("conn ok");
         sock.write_all(b"subscribe\0report\0").expect("send");
-        println!("write ok");
-        //
+        let mut reader = BufReader::new(sock);
+        // let mut buffer = Vec::new();
         let mut s = String::new();
-        sock.read_to_string(&mut s).expect("read");
+        reader.read_line(&mut s).unwrap();
+        println!("{s}");
+        // reader.read_until(b'\0', &mut buffer).unwrap();
         // println!("{s}")
         // let s = std::thread::spawn(move || {
         //     loop {

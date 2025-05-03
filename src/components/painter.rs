@@ -1,6 +1,6 @@
-use cairo;
-use xcb::{x, Xid};
 use crate::error::MyBarError;
+use cairo;
+use xcb::{Xid, x};
 
 use crate::util;
 
@@ -35,7 +35,9 @@ impl<'a> Painter<'a> {
         })
     }
     pub fn flush(&self) -> Result<(), MyBarError> {
-        self.conn.flush().map_err(|_| MyBarError::Other("Flush error".to_string()))?;
+        self.conn
+            .flush()
+            .map_err(|_| MyBarError::Other("Flush error".to_string()))?;
         Ok(())
     }
     pub fn text_width(&self, text: &str) -> Result<f64, MyBarError> {
@@ -43,7 +45,8 @@ impl<'a> Painter<'a> {
     }
 
     pub fn set_hex_color(&self, color: &str) -> Result<(), MyBarError> {
-        let (a, r, g, b) = util::hex_to_argb(color).map_err(|_| MyBarError::Other("Invalid hex color".to_string()))?;
+        let (a, r, g, b) = util::hex_to_argb(color)
+            .map_err(|_| MyBarError::Other("Invalid hex color".to_string()))?;
         self.cairo_conn.set_source_rgba(r, g, b, a);
         Ok(())
     }
@@ -138,4 +141,5 @@ fn create_surface(
         )?;
         Ok(surface)
     }
-} 
+}
+
