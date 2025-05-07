@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use message::Message;
+use std::{sync::Arc, thread::sleep, time::Duration};
 use xcb::x;
 
 mod alsa;
@@ -6,13 +7,14 @@ mod bspwm;
 mod components;
 mod error;
 mod light;
+mod message;
 mod util;
 mod x11;
 
-use components::{BspwmComponent, Component, Date, Event, Light, Painter, Title, Volume};
+use components::{BspwmComponent, Component, Date, Event, Light, Painter, Title, Volume, title};
 use x11::{create_window, setup_ewmh};
 
-fn main() -> xcb::Result<()> {
+fn main() -> error::MyResult<()> {
     let (conn, screen_num) = xcb::Connection::connect(None)?;
     let conn = Arc::new(conn);
     let setup = conn.get_setup();
@@ -38,22 +40,29 @@ fn main() -> xcb::Result<()> {
 
     let width = screen.width_in_pixels();
     let height = 40;
-    let painter = Painter::new(&conn, window, visual_type, width as i32, height).unwrap();
+    let painter = Painter::new(&conn, window, visual_type, width as i32, height)?;
     let audio = alsa::Audio::default();
     let volume = Volume::new(&painter, &audio);
     let light = Light::new(&painter);
     let date = Date::new(&painter);
     let title = Title::new(&painter, &ewmh_conn);
-    let bspwm: Arc<std::sync::Mutex<bspwm::Bspwm>> = bspwm::Bspwm::new();
+    let bspwm: Arc<std::sync::Mutex<bspwm::Bspwm>> = bspwm::Bspwm::new(&conn, window);
     let bspwm_component = BspwmComponent::new(&painter, bspwm);
 
     let components: Vec<Box<dyn Component>> = vec![
-        Box::new(bspwm_component),
         Box::new(light),
         Box::new(volume),
         Box::new(date),
         Box::new(title),
+        Box::new(bspwm_component),
     ];
+    let conn_clone = Arc::clone(&conn);
+    std::thread::spawn(move || {
+        loop {
+            message::Message::Date.send(&conn_clone, window).unwrap();
+            sleep(Duration::from_micros(100));
+        }
+    });
 
     loop {
         match conn.wait_for_event()? {
@@ -83,6 +92,24 @@ fn main() -> xcb::Result<()> {
                     }
                 }
             }
+            xcb::Event::X(xcb::x::Event::PropertyNotify(e)) => {
+                println!(
+                    "titlte change, w: {:?}, w2: {:?}",
+                    e.window(),
+                    title::get_current_window(&ewmh_conn)?
+                );
+                if e.atom() == ewmh_conn.atoms._NET_ACTIVE_WINDOW
+                    || e.atom() == ewmh_conn.atoms._NET_WM_NAME
+                {
+                    components[3].draw()?;
+                }
+                if e.atom() == ewmh_conn.atoms._NET_ACTIVE_WINDOW
+                    && e.window() == title::get_current_window(&ewmh_conn)?
+                {
+                    println!("window: {:?}", e.window());
+                    //
+                }
+            }
             xcb::Event::X(x::Event::KeyPress(ev)) => {
                 let event = Event::KeyPress {
                     keycode: ev.detail(),
@@ -90,6 +117,17 @@ fn main() -> xcb::Result<()> {
                 for component in &components {
                     if let Err(e) = component.handle_event(&event) {
                         eprintln!("Error handling key event: {}", e);
+                    }
+                }
+            }
+            xcb::Event::X(x::Event::ClientMessage(ev)) => {
+                let m: message::Message = ev.data().into();
+                match m {
+                    message::Message::Date => {
+                        components[2].draw()?;
+                    }
+                    message::Message::BspwmUpdate => {
+                        components[4].draw()?;
                     }
                 }
             }

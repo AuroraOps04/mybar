@@ -46,7 +46,10 @@ pub fn create_window(conn: &xcb::Connection, screen: &x::Screen) -> (x::Window, 
             x::Cw::BackPixel(0x0),
             x::Cw::BorderPixel(0x0),
             x::Cw::EventMask(
-                x::EventMask::EXPOSURE | x::EventMask::BUTTON_PRESS | x::EventMask::KEY_PRESS,
+                x::EventMask::EXPOSURE
+                    | x::EventMask::BUTTON_PRESS
+                    | x::EventMask::KEY_PRESS
+                    | x::EventMask::PROPERTY_CHANGE,
             ),
             x::Cw::Colormap(colormap),
         ],
@@ -62,4 +65,3 @@ pub fn create_window(conn: &xcb::Connection, screen: &x::Screen) -> (x::Window, 
 
     (wid, *visual)
 }
-

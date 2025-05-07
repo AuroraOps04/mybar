@@ -13,7 +13,7 @@ pub struct Volume<'a> {
 impl<'a> Volume<'a> {
     pub fn new(painter: &'a Painter, audio: &'a crate::alsa::Audio) -> Self {
         Self {
-            x: 1220,
+            x: 1420,
             y: 0,
             width: 100,
             height: 40,
@@ -100,4 +100,3 @@ impl<'a> Component for Volume<'a> {
         (self.x, self.y, self.width, self.height)
     }
 }
-

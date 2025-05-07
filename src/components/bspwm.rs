@@ -1,6 +1,9 @@
+use x11::xmu::XmuLookupLatin4;
+
 use super::{Component, Event, Painter};
-use crate::error::MyBarError;
 use crate::bspwm::{Bspwm, DesktopEnum};
+use crate::error::MyBarError;
+use std::any::Any;
 use std::sync::{Arc, Mutex};
 
 pub struct BspwmComponent<'a> {
@@ -15,9 +18,9 @@ pub struct BspwmComponent<'a> {
 impl<'a> BspwmComponent<'a> {
     pub fn new(painter: &'a Painter, bspwm: Arc<Mutex<Bspwm>>) -> Self {
         Self {
-            x: 1400,
+            x: 10,
             y: 0,
-            width: 300,
+            width: 260,
             height: 40,
             painter,
             bspwm,
@@ -28,21 +31,32 @@ impl<'a> BspwmComponent<'a> {
 impl<'a> Component for BspwmComponent<'a> {
     fn draw(&self) -> Result<(), MyBarError> {
         if let Ok(bspwm) = self.bspwm.lock() {
-            let mut x_offset = 10.0;
+            let w = self.width + 2 * 10;
+            self.painter
+                .draw_rounded_background(self.x as f64, w as f64, 10f64, "#475164")?;
+            let mut x_offset = self.x as f64 + 10f64;
             for monitor in &bspwm.monitors {
                 // 绘制显示器名称
-                let monitor_color = if monitor.is_active { "#ff3399" } else { "#666666" };
-                self.painter.draw_text(x_offset, 10.0, &monitor.name, monitor_color)?;
+                let monitor_color = if monitor.is_active {
+                    "#ff3399"
+                } else {
+                    "#666666"
+                };
+                self.painter
+                    .draw_text(x_offset, 10.0, &monitor.name, monitor_color)?;
                 x_offset += self.painter.text_width(&monitor.name)? + 10.0;
 
                 // 绘制桌面
                 for desktop in &monitor.desktops {
-                    let (icon, color) = match desktop.state {
-                        DesktopEnum::FOCUSED => ("●", "#ff3399"),
-                        DesktopEnum::OCCUPIED => ("○", "#ffffff"),
-                        DesktopEnum::URGENT => ("!", "#ff0000"),
-                        DesktopEnum::FREE => ("○", "#666666"),
+                    let (icon, color, show) = match desktop.state {
+                        DesktopEnum::FOCUSED => ("●", "#ff3399", true),
+                        DesktopEnum::OCCUPIED => ("○", "#ffffff", true),
+                        DesktopEnum::URGENT => ("!", "#ff0000", true),
+                        DesktopEnum::FREE => ("○", "#666666", false),
                     };
+                    if !show {
+                        continue;
+                    }
 
                     self.painter.draw_text(x_offset, 10.0, icon, color)?;
                     x_offset += self.painter.text_width(icon)? + 5.0;
@@ -99,4 +113,4 @@ impl<'a> Component for BspwmComponent<'a> {
     fn get_bounds(&self) -> (i16, i16, u16, u16) {
         (self.x, self.y, self.width, self.height)
     }
-} 
+}

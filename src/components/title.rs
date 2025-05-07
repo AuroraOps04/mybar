@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use super::{Component, Event, Painter};
-use crate::error::MyBarError;
+use crate::error::{MyBarError, MyResult};
 use xcb_wm::ewmh;
 
 pub struct Title<'a> {
@@ -16,7 +16,7 @@ pub struct Title<'a> {
 impl<'a> Title<'a> {
     pub fn new(painter: &'a Painter, conn: &'a ewmh::Connection) -> Self {
         Self {
-            x: 0,
+            x: 300,
             y: 0,
             width: 300,
             height: 40,
@@ -26,7 +26,7 @@ impl<'a> Title<'a> {
     }
 }
 
-impl<'a> Component for Title<'a> {
+impl Component for Title<'_> {
     fn draw(&self) -> Result<(), MyBarError> {
         let title = get_current_wm_title(self.conn)?;
         let tw = self.painter.text_width(&title)?;
@@ -67,14 +67,13 @@ impl<'a> Component for Title<'a> {
     }
 }
 
-fn get_current_window(conn: &ewmh::Connection) -> Result<xcb::x::Window, MyBarError> {
+pub fn get_current_window(conn: &ewmh::Connection) -> MyResult<xcb::x::Window> {
     let reply = conn.wait_for_reply(conn.send_request(&ewmh::proto::GetActiveWindow))?;
     Ok(reply.window)
 }
 
-fn get_current_wm_title(conn: &ewmh::Connection) -> Result<String, MyBarError> {
+fn get_current_wm_title(conn: &ewmh::Connection) -> MyResult<String> {
     let window = get_current_window(conn)?;
     let reply = conn.wait_for_reply(conn.send_request(&ewmh::proto::GetWmName(window)))?;
     Ok(reply.name)
 }
-

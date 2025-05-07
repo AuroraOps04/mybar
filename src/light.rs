@@ -1,13 +1,13 @@
 use ddc_hi::{Ddc, Display};
 pub fn get_light() -> u16 {
-    for mut display in Display::enumerate() {
-        display.update_capabilities().unwrap();
-        if let Some(feature) = display.info.mccs_database.get(0x10) {
-            if let Ok(value) = display.handle.get_vcp_feature(feature.code) {
-                return value.value();
-            }
-        }
-    }
+    // for mut display in Display::enumerate() {
+    //     display.update_capabilities().unwrap();
+    //     if let Some(feature) = display.info.mccs_database.get(0x10) {
+    //         if let Ok(value) = display.handle.get_vcp_feature(feature.code) {
+    //             return value.value();
+    //         }
+    //     }
+    // }
     0
 }
 

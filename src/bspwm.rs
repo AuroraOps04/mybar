@@ -5,6 +5,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::message;
+
 #[derive(Debug, Clone)]
 pub enum DesktopEnum {
     FREE,
@@ -16,10 +18,10 @@ pub enum DesktopEnum {
 impl DesktopEnum {
     fn from_char(c: char) -> Option<Self> {
         match c {
-            'o' | 'O' => Some(DesktopEnum::OCCUPIED),
-            'f' | 'F' => Some(DesktopEnum::FOCUSED),
-            'u' | 'U' => Some(DesktopEnum::URGENT),
-            _ => None,
+            'o' => Some(DesktopEnum::OCCUPIED),
+            'u' => Some(DesktopEnum::URGENT),
+            'F' | 'U' | 'O' => Some(DesktopEnum::FOCUSED),
+            _ => Some(DesktopEnum::FREE),
         }
     }
 }
@@ -40,13 +42,13 @@ pub struct Monitor {
 #[derive(Debug, Clone)]
 pub struct Bspwm {
     pub monitors: Vec<Monitor>,
-    
 }
 
 impl Bspwm {
-    pub fn new() -> Arc<Mutex<Bspwm>> {
+    pub fn new(conn: &Arc<xcb::Connection>, window: xcb::x::Window) -> Arc<Mutex<Bspwm>> {
         let bspwm = Arc::new(Mutex::new(Bspwm { monitors: vec![] }));
         let b = Arc::clone(&bspwm);
+        let conn_c = Arc::clone(conn);
         std::thread::spawn(move || {
             let sock = get_bspwm_socket();
             let mut sock = UnixStream::connect(sock).unwrap();
@@ -59,8 +61,10 @@ impl Bspwm {
                     break;
                 }
                 if let Ok(mut bspwm) = b.lock() {
-                    println!("parse bspwm report: {line}");
                     bspwm.parse_report(&line);
+                    message::Message::BspwmUpdate
+                        .send(conn_c.as_ref(), window)
+                        .unwrap();
                 }
                 line.clear();
             }
@@ -85,7 +89,7 @@ impl Bspwm {
                         i += 1;
                     }
                     let name: String = chars[start..i].iter().collect();
-                    
+
                     // 查找或创建显示器
                     cur_monitor = self.monitors.iter_mut().find(|m| m.name == name);
                     if cur_monitor.is_none() {
@@ -110,15 +114,13 @@ impl Bspwm {
                             i += 1;
                         }
                         let name: String = chars[start..i].iter().collect();
-                        
+
                         // 查找或创建桌面
-                        if let Some(desktop) = monitor.desktops.iter_mut().find(|d| d.name == name) {
+                        if let Some(desktop) = monitor.desktops.iter_mut().find(|d| d.name == name)
+                        {
                             desktop.state = state;
                         } else {
-                            monitor.desktops.push(Desktop {
-                                state,
-                                name,
-                            });
+                            monitor.desktops.push(Desktop { state, name });
                         }
                     }
                 }
@@ -163,13 +165,5 @@ mod test {
         // let mut buffer = Vec::new();
         let mut s = String::new();
         reader.read_line(&mut s).unwrap();
-        println!("{s}");
-        // reader.read_until(b'\0', &mut buffer).unwrap();
-        // println!("{s}")
-        // let s = std::thread::spawn(move || {
-        //     loop {
-        //     }
-        // });
-        // s.join().unwrap();
     }
 }
